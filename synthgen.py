@@ -181,13 +181,10 @@ def rescale_frontoparallel(p_fp,box_fp,p_im):
     """
     The fronto-parallel image region is rescaled to bring it in 
     the same approx. size as the target region size.
-
     p_fp : nx2 coordinates of countour points in the fronto-parallel plane
     box  : 4x2 coordinates of bounding box of p_fp
     p_im : nx2 coordinates of countour in the image
-
     NOTE : p_fp and p are corresponding, i.e. : p_fp[i] ~ p[i]
-
     Returns the scale 's' to scale the fronto-parallel points by.
     """
     l1 = np.linalg.norm(box_fp[1,:]-box_fp[0,:])
@@ -210,7 +207,6 @@ def get_text_placement_mask(xyz,mask,plane,pad=2,viz=False):
     Returns a binary mask in which text can be placed.
     Also returns a homography from original image
     to this rectified mask.
-
     XYZ  : (HxWx3) image xyz coordinates
     MASK : (HxW) : non-zero pixels mark the object mask
     REGION : DICT output of TextRegions.get_regions
@@ -342,7 +338,7 @@ def viz_regions(img,xyz,seg,planes,labels):
     mym.orientation_axes()
     mym.show(True)
  
-def viz_textbb(fignum,text_im, bb_list,alpha=1.0):
+def viz_textbb(fignum,text_im, text_mask, bb_list,alpha=1.0):
     """
     text_im : image containing text
     bb_list : list of 2x4xn_i boundinb-box matrices
@@ -414,7 +410,6 @@ class RendererV3(object):
         Apply homography transform to bounding-boxes.
         BBS: 2 x 4 x n matrix  (2 coordinates, 4 points, n bbs).
         Returns the transformed 2x4xn bb-array.
-
         offset : a 2-tuple (dx,dy), added to points before transfomation.
         """
         eps = 1e-16
@@ -438,7 +433,6 @@ class RendererV3(object):
         """
         Ensure that bounding-boxes are not too distorted
         after perspective distortion.
-
         bb0 : 2x4xn martrix of BB coordinates before perspective
         bb  : 2x4xn matrix of BB after perspective
         text: string of text -- for excluding symbols/punctuations.
@@ -495,7 +489,7 @@ class RendererV3(object):
             ksz = 5
         return cv2.GaussianBlur(text_mask,(ksz,ksz),bsz)
 
-    def place_text(self,rgb,collision_mask,H,Hinv):
+    def place_text(self,rgb,mask,collision_mask,H,Hinv):
         font = self.text_renderer.font_state.sample()
         font = self.text_renderer.font_state.init_font(font)
 
@@ -525,8 +519,9 @@ class RendererV3(object):
         text_mask = self.feather(text_mask, min_h)
 
         im_final = self.colorizer.color(rgb,[text_mask],np.array([min_h]))
+        mask_final=self.colorizer.color(mask,[text_mask],np.array([min_h]),add_border=False)
 
-        return im_final, text, bb, collision_mask
+        return im_final, mask_final, text, bb, collision_mask
 
 
     def get_num_text_regions(self, nregions):
@@ -542,10 +537,8 @@ class RendererV3(object):
         """
         Converts character bounding-boxes to word-level
         bounding-boxes.
-
         charBB : 2x4xn matrix of BB coordinates
         text   : the text string
-
         output : 2x4xm matrix of BB coordinates,
                  where, m == number of words.
         """
@@ -590,7 +583,6 @@ class RendererV3(object):
                constitute a region mask
         ninstance : no of times image should be
                     used to place text.
-
         @return:
             res : a list of dictionaries, one for each of 
                   the image instances.
@@ -599,7 +591,6 @@ class RendererV3(object):
                       'bb'  : 2x4xn matrix of bounding-boxes
                               for each character in the image.
                       'txt' : a list of strings.
-
                   The correspondence b/w bb and txt is that
                   i-th non-space white-character in txt is at bb[:,:,i].
             
@@ -630,7 +621,7 @@ class RendererV3(object):
         for i in range(ninstance):
             place_masks = copy.deepcopy(regions['place_mask'])
 
-            print (colorize(Color.CYAN, " ** instance # : %d"%i))
+            print(colorize(Color.CYAN, " ** instance # : %d"%i))
 
             idict = {'img':[], 'charBB':None, 'wordBB':None, 'txt':None}
 
@@ -641,6 +632,8 @@ class RendererV3(object):
 
             placed = False
             img = rgb.copy()
+            mask = np.zeros_like(rgb)
+            gray_mask = np.zeros(rgb.shape[:2])
             itext = []
             ibb = []
 
@@ -652,16 +645,16 @@ class RendererV3(object):
                 ireg = reg_idx[idx]
                 try:
                     if self.max_time is None:
-                        txt_render_res = self.place_text(img,place_masks[ireg],
+                        txt_render_res = self.place_text(img,mask,place_masks[ireg],
                                                          regions['homography'][ireg],
                                                          regions['homography_inv'][ireg])
                     else:
                         with time_limit(self.max_time):
-                            txt_render_res = self.place_text(img,place_masks[ireg],
+                            txt_render_res = self.place_text(img,mask,place_masks[ireg],
                                                              regions['homography'][ireg],
                                                              regions['homography_inv'][ireg])
                 except TimeoutException as msg:
-                    print (msg)
+                    print(msg)
                     continue
                 except:
                     traceback.print_exc()
@@ -670,7 +663,12 @@ class RendererV3(object):
 
                 if txt_render_res is not None:
                     placed = True
-                    img,text,bb,collision_mask = txt_render_res
+                    img,mask,text,bb,collision_mask = txt_render_res
+                    tmp_mask=np.zeros_like((mask))
+                    tmp_mask[gray_mask==0]=mask[gray_mask==0]
+                    tmp=np.sum(tmp_mask,axis=-1)
+                    gray_mask[tmp>np.mean(tmp[tmp>0])]=255
+
                     # update the region collision mask:
                     place_masks[ireg] = collision_mask
                     # store the result:
@@ -680,12 +678,16 @@ class RendererV3(object):
             if  placed:
                 # at least 1 word was placed in this instance:
                 idict['img'] = img
+                gray_mask=np.expand_dims(gray_mask,axis=-1)
+                gray_mask=np.concatenate((gray_mask,gray_mask,gray_mask),axis=-1)
+                idict['mask']=gray_mask 
+
                 idict['txt'] = itext
                 idict['charBB'] = np.concatenate(ibb, axis=2)
                 idict['wordBB'] = self.char2wordBB(idict['charBB'].copy(), ' '.join(itext))
                 res.append(idict.copy())
                 if viz:
-                    viz_textbb(1,img, [idict['wordBB']], alpha=1.0)
+                    viz_textbb(1,img,gray_mask,[idict['wordBB']], alpha=1.0)
                     viz_masks(2,img,seg,depth,regions['label'])
                     # viz_regions(rgb.copy(),xyz,seg,regions['coeff'],regions['label'])
                     if i < ninstance-1:

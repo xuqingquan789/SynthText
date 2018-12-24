@@ -308,7 +308,7 @@ class Colorize(object):
         return Layer(alpha=text_arr, color=fg_col), fg_col, bg_col
 
 
-    def process(self, text_arr, bg_arr, min_h):
+    def process(self, text_arr, bg_arr, min_h, add_border):
         """
         text_arr : one alpha mask : nxm, uint8
         bg_arr   : background image: nxmx3, uint8
@@ -325,38 +325,39 @@ class Colorize(object):
         layers = [l_text]
         blends = []
 
+        if add_border:
         # add border:
-        if np.random.rand() < self.p_border:
-            if min_h <= 15 : bsz = 1
-            elif 15 < min_h < 30: bsz = 3
-            else: bsz = 5
-            border_a = self.border(l_text.alpha, size=bsz)
-            l_border = Layer(border_a, self.color_border(l_text.color,l_bg.color))
-            layers.append(l_border)
-            blends.append('normal')
+            if np.random.rand() < self.p_border:
+                if min_h <= 15 : bsz = 1
+                elif 15 < min_h < 30: bsz = 3
+                else: bsz = 5
+                border_a = self.border(l_text.alpha, size=bsz)
+                l_border = Layer(border_a, self.color_border(l_text.color,l_bg.color))
+                layers.append(l_border)
+                blends.append('normal')
 
-        # add shadow:
-        if np.random.rand() < self.p_drop_shadow:
-            # shadow gaussian size:
-            if min_h <= 15 : bsz = 1
-            elif 15 < min_h < 30: bsz = 3
-            else: bsz = 5
+            # add shadow:
+            if np.random.rand() < self.p_drop_shadow:
+                # shadow gaussian size:
+                if min_h <= 15 : bsz = 1
+                elif 15 < min_h < 30: bsz = 3
+                else: bsz = 5
 
-            # shadow angle:
-            theta = np.pi/4 * np.random.choice([1,3,5,7]) + 0.5*np.random.randn()
+                # shadow angle:
+                theta = np.pi/4 * np.random.choice([1,3,5,7]) + 0.5*np.random.randn()
 
-            # shadow shift:
-            if min_h <= 15 : shift = 2
-            elif 15 < min_h < 30: shift = 7+np.random.randn()
-            else: shift = 15 + 3*np.random.randn()
+                # shadow shift:
+                if min_h <= 15 : shift = 2
+                elif 15 < min_h < 30: shift = 7+np.random.randn()
+                else: shift = 15 + 3*np.random.randn()
 
-            # opacity:
-            op = 0.50 + 0.1*np.random.randn()
+                # opacity:
+                op = 0.50 + 0.1*np.random.randn()
 
-            shadow = self.drop_shadow(l_text.alpha, theta, shift, 3*bsz, op)
-            l_shadow = Layer(shadow, 0)
-            layers.append(l_shadow)
-            blends.append('normal')
+                shadow = self.drop_shadow(l_text.alpha, theta, shift, 3*bsz, op)
+                l_shadow = Layer(shadow, 0)
+                layers.append(l_shadow)
+                blends.append('normal')
         
 
         l_bg = Layer(alpha=255*np.ones_like(text_arr,'uint8'), color=bg_col)
@@ -410,7 +411,7 @@ class Colorize(object):
         print ("color diff percentile :", diff)
         return diff, (bgo,txto)
 
-    def color(self, bg_arr, text_arr, hs, place_order=None, pad=20):
+    def color(self, bg_arr, text_arr, hs, place_order=None, pad=20, add_border=True):
         """
         Return colorized text image.
 
@@ -454,7 +455,7 @@ class Colorize(object):
             w,h = text_patch.shape
             bg = bg_arr[l[0]:l[0]+w,l[1]:l[1]+h,:]
 
-            rdr0 = self.process(text_patch, bg, hs[i])
+            rdr0 = self.process(text_patch, bg, hs[i], add_border)
             rendered.append(rdr0)
 
             bg_arr[l[0]:l[0]+w,l[1]:l[1]+h,:] = rdr0#rendered[-1]
