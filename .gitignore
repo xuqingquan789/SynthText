@@ -88,5 +88,11 @@ ENV/
 
 # Rope project settings
 .ropeproject
+<<<<<<< HEAD
 data/
 results/
+=======
+results/
+data/
+
+>>>>>>> 066fc3a39bdc22b77efa0a5f28f7e349db1490cb
