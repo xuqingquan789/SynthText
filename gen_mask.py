@@ -28,7 +28,7 @@ import xml.etree.ElementTree as ET
 from PIL import Image
 # Define some configuration variables:
 NUM_IMG = -1  # no. of images to use for generation (-1 to use all available):
-INSTANCE_PER_IMAGE = 1  # no. of times to use the same image
+INSTANCE_PER_IMAGE = 10  # no. of times to use the same image
 SECS_PER_IMG = 10  # max time per image in seconds
 
 # path to the data-file, containing image, depth and segmentation:
@@ -36,10 +36,10 @@ DATA_PATH = '/workspace/wanghao/datasets/Synthtext_Original/data'
 # DB_FNAME = osp.join(DATA_PATH,'dset.h5')
 # url of the data (google-drive public file):
 DATA_URL = 'http://www.robots.ox.ac.uk/~ankush/data.tar.gz'
-OUT_FILE = 'results/new_synth.h5'
-OUT_IMG = 'results/train_images/'
-OUT_MASK = 'results/train_masks/'
-OUT_GT ='results/train_gts/'
+OUT_FILE = 'results/results2/new_synth.h5'
+OUT_IMG = 'results/results2/train_images/'
+OUT_MASK = 'results/results2/train_masks/'
+OUT_GT ='results/results2/train_gts'
 
 def get_data():
     """
@@ -108,7 +108,7 @@ def save_txt(imgname,index,box,txt):
     for i in txt:
         words.extend(i.split())
     assert len(words)==box.shape[-1],'error, num words should match box'
-    with open(OUT_GT+prefix+'_%d.txt'%(index),'w') as f:
+    with open(osp.join(OUT_GT,prefix+'_%d.txt'%(index)),'w') as f:
         print(words)
         print(box)
         for i in range(len(words)):
@@ -139,8 +139,8 @@ def save_img(imgname, index, img, mask):
     prefix = imgname.split('.')[0]
 
     imname = prefix+'_%d.jpg' % (index)
-    cv2.imwrite(OUT_IMG+imname, img[:,:,::-1])
-    cv2.imwrite(OUT_MASK+imname, mask)
+    cv2.imwrite(osp.join(OUT_IMG, imname), img[:,:,::-1])
+    cv2.imwrite(osp.join(OUT_MASK+imname), mask)
 
 
 def main(viz=False):
@@ -150,13 +150,19 @@ def main(viz=False):
     im_path = osp.join(DATA_PATH, 'bg_img')
     img_names = os.listdir(im_path)
 
+    N = len(img_names)
+    global NUM_IMG
+    if NUM_IMG < 0:
+        NUM_IMG = N
+    start_idx, end_idx = 0, min(NUM_IMG, N)
+
     # open the output h5 file:
     out_db = h5py.File(OUT_FILE, 'w')
     out_db.create_group('/data')
     print(colorize(Color.GREEN, 'Storing the output in: '+OUT_FILE, bold=True))
 
     RV3 = RendererV3(DATA_PATH, max_time=SECS_PER_IMG)
-    for i in range(len(img_names)):
+    for i in range(start_idx, end_idx):
         if i % 100 == 0:
             out_db.flush()
             os.system('cp %s %s_%d' % (OUT_FILE, OUT_FILE, i))
@@ -178,7 +184,7 @@ def main(viz=False):
             seg = np.array(Image.fromarray(seg).resize(sz, Image.NEAREST))
             depth = np.array(Image.fromarray(depth).resize(sz, Image.NEAREST))
 
-            print(colorize(Color.RED, '%d of %d' % (i, 1000), bold=True))
+            print(colorize(Color.RED, '%d of %d' % (i, end_idx-1), bold=True))
             res = RV3.render_text(img, depth, seg, area, label,
                                   ninstance=INSTANCE_PER_IMAGE, viz=viz)
             if len(res) > 0:
