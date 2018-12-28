@@ -104,14 +104,17 @@ def parse_txt(txt_name):
 
 def save_txt(imgname,index,box,txt):
     prefix = imgname.split('.')[0]
-    assert len(txt)==box.shape[-1],'error txt should match box'
+    words = []
+    for i in txt:
+        words.extend(i.split())
+    assert len(words)==box.shape[-1],'error, num words should match box'
     with open(OUT_GT+prefix+'_%d.txt'%(index),'w') as f:
-        print(txt)
+        print(words)
         print(box)
-        for i in range(len(txt)):
+        for i in range(len(words)):
             bb=box[:,:,i].T.reshape((-1,)) 
             line=(',').join(str(float(b)) for b in bb)
-            line+=',%s'%(txt[i])
+            line+=',%s'%(words[i])
             
             f.write(line+'\n')
 def add_res_to_db(imgname, res, db):
@@ -127,7 +130,9 @@ def add_res_to_db(imgname, res, db):
         save_img(imgname, i, res[i]['img'], res[i]['mask'])
         db['data'][dname].attrs['charBB'] = res[i]['charBB']
         db['data'][dname].attrs['wordBB'] = res[i]['wordBB']
-        db['data'][dname].attrs['txt'] = res[i]['txt']
+        L = res[i]['txt']
+        L = [n.encode('ascii', 'ignore') for n in L]
+        db['data'][dname].attrs['txt'] = L
 
 
 def save_img(imgname, index, img, mask):
